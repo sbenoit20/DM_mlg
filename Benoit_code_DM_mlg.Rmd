@@ -1,0 +1,570 @@
+---
+title: 'Devoir maison obligatoire : Modèle linéaire Généralisé et Choix de modèles'
+author: 'Sylvain BENOIT'
+date: '31 août 2019'
+output:
+  html_document: default
+  header-includes:
+  - \usepackage{xcolor}
+  - \usepackage{url}
+  output: html_document
+  theme: unity
+  highlight: github
+  pdf_document: default
+---
+
+```{r setup, include=FALSE} 
+knitr::opts_chunk$set(echo = TRUE, eval=TRUE) 
+```
+
+# Présentation des données : Prédire les jours de pluie à Bâle
+
+Comme renseigné dans l'énoncé, le fichier `meteo.train.csv` contient des données sur les conditions météorologiques à Bâle (Suisse). Chaque ligne correspond à un jour entre 2010 et 2018. Bien que ces observatons soient reportées dans l'ordre chronologique, ces jours ne sont pas systématiquement consécutifs, certains d'entre eux sont dans la base test correspondant au fichier `meteo.test.csv`. Nous décidons donc de ne pas utiliser un modèle utilisant des variables retardées. En d'autres termes, seules les observations du jour même sont utilisées pour prévoir s'il va pleuvoir demain (variable `pluie.demain`). Bien que dommageable car il nous est dès lors impossible de prendre en compte dans le temps l'évolution des épisodes météorologiques, cette hypothèse de travail nous semble moins contraignante pour réaliser des prévisions immédiates (ayant une échéance de quelques heures). Les colonnes (variables) correspondent aux valeurs moyennes, minimales et maximales sur la journée de :
+
+  - Température (en °C): `Temperature.Mean`, `Temperature.Max`, `Temperature.Min`;
+  - Humidité relative (en pourcentage): `RelHumidity.Mean`, `RelHumidity.Max`, `RelHumidity.Min`;
+  - Pression (en hPa): `Pressure.Mean`, `Pressure.Max`, `Pressure.Min`;
+  - Nébulosité (en pourcentage): `TotalCloudCover.Mean`, `TotalCloudCover.Max`, `TotalCloudCover.Min`;
+  - Nébulosité forte, moyenne et faible (en pourcentage): `HighCloudCover.Mean`, `HighCloudCover.Max`, `HighCloudCover.Min`, `MediumCloudCover.Mean`, `MediumCloudCover.Max`, `MediumCloudCover.Min`, `LowCloudCover.Mean`, `LowCloudCover.Max`, `LowCloudCover.Min`;
+  - Vitesse (en km/h) du vent à 10 m d'altitude, 80 m d'altitude, et à l'altitude où la pression vaut 900 hPa: `WindSpeed.Mean.10m`, `WindSpeed.Mean.80m`, `WindSpeed.Mean.900hPa`, `WindSpeed.Max.10m`, `WindSpeed.Max.80m`, `WindSpeed.Max.900hPa`, `WindSpeed.Min.10m`, `WindSpeed.Min.80m`, `WindSpeed.Min.900hPa`;
+  - Direction (en degrés) du vent à 10 m d'altitude, 80 m d'altitude, et à l'altitude où la pression vaut 900 hPa: `WindDirection.Mean.10m`, `WindDirection.Mean.80m`, `WindDirection.Mean.900hPa`;
+  - Rafales de vent à 10 m: `WindGust.Mean`, `WindGust.Max`, `WindGust.Min`;
+  
+ainsi qu'aux valeurs totales sur la journée de :
+
+  - Précipitations (en mm): `TotalPrecipitation.Sum`;
+  - Neige (en cm): `Snowfall.Sum`;
+  - Minutes d'ensoleillement: `SunshineDuration.Sum`;
+  - Rayonnement solaire (W/m2): `ShortwaveRadiation.Sum`;
+
+Pour plus de clarté les noms des 40 variables explicatives ont été recodées.
+
+```{r,warning=FALSE,message=FALSE} 
+# Refresh the environment of R
+rm(list = ls(all = TRUE))
+
+# Set the folder path to download and upload your dataset
+setwd("F:/Dropbox/Dauphine-SDFi/DauphineDigital/DM_mlg")
+
+# Import your dataset
+meteo_train = read.csv("meteo.train.csv")
+
+# To extract columns' names
+dput(names(meteo_train))
+# Copy/Paste the previous output from your console and rename this list accordingly
+names(meteo_train) <- c("X", "Year", "Month", "Day", "Hour", "Minute", "Temperature.Mean", 
+                            "RelHumidity.Mean", "Pressure.Mean", "TotalPrecipitation.Sum", 
+                            "Snowfall.Sum", "TotalCloudCover.Mean", 
+                            "HighCloudCover.Mean", "MediumCloudCover.Mean", "LowCloudCover.Mean",
+                            "SunshineDuration.Sum", "ShortwaveRadiation.Sum", 
+                            "WindSpeed.Mean.10m", "WindDirection.Mean.10m", 
+                            "WindSpeed.Mean.80m", "WindDirection.Mean.80m",
+                            "WindSpeed.Mean.900hPa", "WindDirection.Mean.900hPa", 
+                            "WindGust.Mean", 
+                            "Temperature.Max", "Temperature.Min", 
+                            "RelHumidity.Max", "RelHumidity.Min", "Pressure.Max", "Pressure.Min", 
+                            "TotalCloudCover.Max", "TotalCloudCover.Min", 
+                            "HighCloudCover.Max", "HighCloudCover.Min",
+                            "MediumCloudCover.Max", "MediumCloudCover.Min",
+                            "LowCloudCover.Max", "LowCloudCover.Min",
+                            "WindSpeed.Max.10m", "WindSpeed.Min.10m", 
+                            "WindSpeed.Max.80m", "WindSpeed.Min.80m", 
+                            "WindSpeed.Max.900hPa", "WindSpeed.Min.900hPa",
+                            "WindGust.Max", "WindGust.Min", 
+                            "pluie.demain"
+)
+```
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+#install.packages(c("Hmisc","corrplot","dplyr","glmulti", "pROC"))
+```
+
+# Sélection des variables explicatives
+
+Cette section propose une analyse descriptive des 40 variables explicatives. Cette analyse est nécessaire puisque de nombreuses variables observent vraisemblablement les mêmes caractéristiques météorologiques^[Un modèle automatique de sélection de modèle avec la fonction glmulti() pourrait être lancé sur toutes ces variables. Toutefois, le nombre élevé de variables rend infaisable cette méthode. Par ailleurs, il est indispensable d'étudier aux préalables nos variables explicatives et de les lier au phénomène climatique que l'on cherche à prédire.]. De nouvelles variables explicatives sont également proposées sur la base de nos recherches sur le sujet.
+
+## Analyse des corrélations: variables redondantes
+
+Le jeu de données contenant les valeurs moyennes, maximales et minimales pour un certain nombre devariables, nous décidons d'analyser les corrélations entre ces dernières afin d'éliminer de potentiel variables redondantes.
+
+```{r, warning=FALSE, message=FALSE}
+# Correlations among our 40 numeric explanatory variables 
+
+# Selecting only the subset of our 40 explanatory variables
+exp.var = subset(meteo_train, select = -c(X, Year, Month, Day, Hour, Minute))
+
+# Correlation computation with their pvalues
+library("Hmisc")
+corr.exp.var <- rcorr(as.matrix(exp.var))
+# The correlation coefficients are in corr.exp.var$r whereas pvalues are in corr.exp.var$p 
+
+# Draw a correlogram
+library(corrplot)
+# Insignificant correlations are leaved blank 
+corrplot(corr.exp.var$r, type="upper", order="hclust", 
+         p.mat = corr.exp.var$P, sig.level = 0.01, insig = "blank")
+
+```
+
+L'analyse du corrélogramme, nous permet de poursuivre l'étude sur des sous-échantillons de variables corrélées positivement entre pour plus de lisibilité. Afin de sélectionner au mieux nos variables, la corrélation avec la variable dépendante est également calculée. 
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+# Force du vent
+exp.var.WindGustSpeed = subset(meteo_train, select = c(WindSpeed.Mean.10m, WindSpeed.Mean.80m, WindSpeed.Mean.900hPa, WindSpeed.Max.10m, WindSpeed.Max.80m, WindSpeed.Max.900hPa, WindSpeed.Min.10m, WindSpeed.Min.80m, WindSpeed.Min.900hPa, WindGust.Mean, WindGust.Max, WindGust.Min, pluie.demain))
+
+corr.exp.var.WindGustSpeed <- rcorr(as.matrix(exp.var.WindGustSpeed))
+corrplot(corr.exp.var.WindGustSpeed$r, type="upper", order="hclust", 
+         p.mat = corr.exp.var.WindGustSpeed$P, sig.level = 0.01, insig = "blank")
+
+# Direction du vent
+exp.var.WindDirection = subset(meteo_train, select = c(WindDirection.Mean.10m, WindDirection.Mean.80m, WindDirection.Mean.900hPa, pluie.demain))
+
+corr.exp.var.WindDirection <- rcorr(as.matrix(exp.var.WindDirection))
+corrplot(corr.exp.var.WindDirection$r, type="upper", order="hclust", 
+         p.mat = corr.exp.var.WindDirection$P, sig.level = 0.01, insig = "blank")
+
+# Couverture nuageuse
+exp.var.CloudCover = subset(meteo_train, select = c(TotalCloudCover.Mean, HighCloudCover.Mean, MediumCloudCover.Mean, LowCloudCover.Mean, TotalCloudCover.Max, HighCloudCover.Max, MediumCloudCover.Max, LowCloudCover.Max, TotalCloudCover.Min, HighCloudCover.Min, MediumCloudCover.Min, LowCloudCover.Min, pluie.demain))
+
+corr.exp.var.CloudCover <- rcorr(as.matrix(exp.var.CloudCover))
+corrplot(corr.exp.var.CloudCover$r, type="upper", order="hclust", 
+         p.mat = corr.exp.var.CloudCover$P, sig.level = 0.01, insig = "blank")
+
+# Chute de neige, précipitation et humidité relative
+exp.var.Humidity = subset(meteo_train, select = c(TotalPrecipitation.Sum, Snowfall.Sum, RelHumidity.Mean, RelHumidity.Max, RelHumidity.Min, pluie.demain))
+
+corr.exp.var.Humidity <- rcorr(as.matrix(exp.var.Humidity))
+corrplot(corr.exp.var.Humidity$r, type="upper", order="hclust", 
+         p.mat = corr.exp.var.Humidity$P, sig.level = 0.01, insig = "blank")
+
+# Pressure
+exp.var.Pressure = subset(meteo_train, select = c(Pressure.Mean, Pressure.Max, Pressure.Min, pluie.demain))
+
+corr.exp.var.Pressure <- rcorr(as.matrix(exp.var.Pressure))
+corrplot(corr.exp.var.Pressure$r, type="upper", order="hclust", 
+         p.mat = corr.exp.var.Pressure$P, sig.level = 0.01, insig = "blank")
+
+# Temperature
+exp.var.Temperature = subset(meteo_train, select = c(Temperature.Mean, Temperature.Max, Temperature.Min, SunshineDuration.Sum, ShortwaveRadiation.Sum, pluie.demain))
+
+corr.exp.var.Temperature <- rcorr(as.matrix(exp.var.Temperature))
+corrplot(corr.exp.var.Temperature$r, type="upper", order="hclust", 
+         p.mat = corr.exp.var.Temperature$P, sig.level = 0.01, insig = "blank")
+```
+
+D'après le premier graphique, nous décidons de conserver les variables `WindSpeed.Mean.900hPa` et `WindGust.Max` car pour une altitude (pression atmosphérique) identique, les variables `.Mean`, `.Max` et `Min` ont de très fortes corrélations (supérieur à 80%). Les variables `.Max` sot ici les plus corrélées avec la variables dépendante, nous décidons donc de sélectionner celle avec la plus forte corrélation avec la variables dépendante (`WindGust.Max`). La variable `WindSpeed.Mean.900hPa` est préférée à la variable `WindSpeed.Max.900hPa` (plus corrélée avec la dépendante) afin de limiter la corrélation avec la pécédente variables sélectionnée.
+
+D'après le deuxième graphique, c'est la variable `WindDirection.Mean.900hPa` qui est retenue car la plus corrélée avec la variable `pluie.demain`. La direction du vent à 10 mètres (`WindDirection.Mean.10m`) pourrait également être conservée car peu corrélée avec notre variables sélectionnée.
+
+D'après le troisième graphique, ce sont les variables `TotalCloudCover.Mean`, `HighCloudCover.Max`, `MediumCloudCover.Max` et `LowCloudCover.Max`. Les variables `.Min` n'étant pas corrélée avec la variable dépendante, nous n'en conservons pas. En effet, en l'absence de nuage, il est peu probable qu'il pleuve. Les variables `.Max`sont privilégiées pour les trois niveaux de couverture nuageuses afin de capter la présence d'un ciel de traîne. Ne sachant pas exactement à quelle altitude se juge la couverture nuageuse basse, moyenne et haute, nous avons décidé de prendre une variable de chacune de ses catégories. La couvertuire nuageuse totale, permet d'avoir une observation moyenne sur la journée. On s'attend à ce que plus la couverture nuageuse soit élevée, plus la probabilité de pluie le lendemain est importante.
+
+D'après le quatrième graphique, la variable dépendante `pluie.demain` est corrélée positivement et significativement avec les trois variables suivantes : `TotalPrecipitation.Sum`, `Snowfall.Sum` et `RelHumidity.Min`; nous décidons donc des sélectionner.
+
+D'après le cinquième graphique, la pression atmosphérique est corrélée négativement et significativement avec la varibale dépendante. Les phénomènes pluvieux se produisent lorsque la pression atmosphérique est basse. Afin de capter si une basse pression a été observée durqnt la journée, nous sélectionnons la variable `Pressure.Min`, ce choix est également guidé par le fait que sa corrélation avec la variable dépendante est la plus forte parmi les trois (-38,41% contre -37,82% avec `Pressure.Mean` et -36.29% avec `Pressure.Max`).
+
+D'après le sixième graphique, les variables températures ne sont pas corrélée significativement avec la variable dépendante tandis que les trois autres le sont. Nous décidons donc de sélectionner `SunshineDuration.Sum` et `ShortwaveRadiation.Sum` même si ces deux variables sont corrélées positivement et significativement (73%). A cette étape de l'analyse, il nous semble potentiellement dommageable de négliger une variable explicative comme la température. La variable `Temperature.Min` étant la plus corrélée avec la variable `pluie.demain` (5,80% contre 4,21% avec `Température.Mean` et 4,94% avec `Temperature.Max`), c'est cette dernière que nous conservons.
+
+Nous avons donc sélectionné les 13 (14) variables explicatives suivantes pour poursuivre l'analyse : `WindSpeed.Mean.900hPa`, `WindGust.Max`, `WindDirection.Mean.900hPa`, `TotalCloudCover.Mean`, `HighCloudCover.Max`, `MediumCloudCover.Max`, `LowCloudCover.Max`, `TotalPrecipitation.Sum`, `Snowfall.Sum`, `RelHumidity.Min`, `Pressure.Min`, `SunshineDuration.Sum`, `ShortwaveRadiation.Sum` et potentiellement `WindDirection.Mean.10m`.
+
+# Création de nouvelles variables explicatives
+
+Les observations étant datées, nous souhaitons prendre en compte le mois et la saison dans notre analyse. Nous ajoutons donc ces 2 variables à notre base de données, `Month.fac` possède 12 classes tandis que `Season.fac` en a 4.
+
+```{r, warning=FALSE, message=FALSE} 
+# Month as a factor
+meteo_train$Month.fac <- factor(meteo_train$Month)
+
+# Create Season as variable
+library(dplyr)
+meteo_train <-
+  mutate(meteo_train,
+    Season = case_when(
+      Month.fac %in% 10:12 ~ "Fall",
+      Month.fac %in%  1:3  ~ "Winter",
+      Month.fac %in%  4:6  ~ "Spring",
+      TRUE ~ "Summer"))
+# Season as a factor
+meteo_train$Season.fac <- factor(meteo_train$Season)
+```
+
+La direction du vent étant exprimé en degré, nous décidons de recoder la variable `WindDirection.Mean.900hPa` en 16 classes afin de construire une rose des vents. D'après la méthode Moreux, le temps en Europe dépend de 5 sortes de masses d'air : arctique, polaire continentale, tropicale continentale, tropicale maritime et polaire maritime. Ce sont ces 5 sortes de masses d'air que nous souhaitons associer à la direction du vent. Les vents maritimes qu'ils soient tropicaux ou polaires sont plutôt associé au mauvais temps. Au final, notre nouvelle variable `WindDirectionMoreux.Mean.900hPa` est constitué de 5 classes. D'après nos résultats ci-dessous, ce sont bien les vents maritimes qui engendrent le plus de précipitations et en particulier l'air tropical maritime.
+
+```{r, warning=FALSE} 
+# Sliced variable
+meteo_train$WindDirectionCardi16.Mean.900hPa <- cut(meteo_train$WindDirection.Mean.900hPa, seq(0, 360, length.out=17), 
+                                                 labels = c( "N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S",
+                                                            "SSO", "SO", "OSO", "O", "ONO", "NO", "NNO"))
+# Descriptive statistics, only the sum of event per class
+summary(meteo_train$WindDirectionCardi16.Mean.900hPa)
+# Table with the dependent variable
+table(meteo_train$WindDirectionCardi16.Mean.900hPa,meteo_train$pluie.demain)
+
+# Air mass names
+meteo_train$WindDirectionMoreux.Mean.900hPa[meteo_train$WindDirectionCardi16.Mean.900hPa == "NO" |  meteo_train$WindDirectionCardi16.Mean.900hPa == "NNO"| meteo_train$WindDirectionCardi16.Mean.900hPa == "N" | meteo_train$WindDirectionCardi16.Mean.900hPa == "NNE"] <- " Arctique"
+meteo_train$WindDirectionMoreux.Mean.900hPa[meteo_train$WindDirectionCardi16.Mean.900hPa == "NE" | meteo_train$WindDirectionCardi16.Mean.900hPa == "ENE" | meteo_train$WindDirectionCardi16.Mean.900hPa == "E"] <- " Polaire continental"
+meteo_train$WindDirectionMoreux.Mean.900hPa[meteo_train$WindDirectionCardi16.Mean.900hPa == "ESE" | meteo_train$WindDirectionCardi16.Mean.900hPa == "SE" | meteo_train$WindDirectionCardi16.Mean.900hPa == "SSE"] <- " Tropical continental"
+meteo_train$WindDirectionMoreux.Mean.900hPa[meteo_train$WindDirectionCardi16.Mean.900hPa == "S" | meteo_train$WindDirectionCardi16.Mean.900hPa == "SSO" | meteo_train$WindDirectionCardi16.Mean.900hPa == "SO" | meteo_train$WindDirectionCardi16.Mean.900hPa == "OSO"] <- " Tropical maritime"
+meteo_train$WindDirectionMoreux.Mean.900hPa[meteo_train$WindDirectionCardi16.Mean.900hPa == "O" | meteo_train$WindDirectionCardi16.Mean.900hPa == "ONO"] <- " Polaire maritime"
+# WindDirectionMoreux.Mean.900hPa as a factor
+meteo_train$WindDirectionMoreux.Mean.900hPa.fac <- factor(meteo_train$WindDirectionMoreux.Mean.900hPa)
+# Descriptive statistics, only the sum of event per class
+summary(meteo_train$WindDirectionMoreux.Mean.900hPa.fac)
+# Table with the dependent variable
+table(meteo_train$WindDirectionMoreux.Mean.900hPa.fac,meteo_train$pluie.demain)
+```
+
+Désormais, nous souhaitons également définir des classes pour la force du vent et la pression atmosphérique. Pour cela, nous repartons de la variable `WindSpeed.Mean.900hPa` pour la vitesse du vent et de `Pressure.Mean` pour la pression atmosphérique. Météo france propose une [qualification du vent](http://www.meteofrance.fr/publications/glossaire/153463-qualification-du-vent) en 6 classes en fonction de sa vitesse. Pour le pression atmosphérique, au dessus de 1020 hPa, nous sommes en présence d'une celluel anticyclonique, en dessous, nous décomposons les zones dépressionnaire en trois. Lorsque la pression atmosphérique est en dessous de 1020 hPa, il y a plus de jours de pluie le lendemain. 
+
+```{r, warning=FALSE} 
+# Sliced WindSpeed variable
+meteo_train$WindSpeedForce.Mean.900hPa <- cut(meteo_train$WindSpeed.Mean.900hPa, c(min(meteo_train$WindSpeed.Mean.900hPa),2,12,30,50,75,max(meteo_train$WindSpeed.Mean.900hPa)), labels= c("Vent calme", "Vent faible", "Vent modéré", "Vent assez fort", "Vent fort", "Vent très fort"))
+# Table with the dependent variable
+table(meteo_train$WindSpeedForce.Mean.900hPa,meteo_train$pluie.demain)
+
+# Sliced WindSpeed variable
+meteo_train$PressureName.Mean <- cut(meteo_train$Pressure.Mean, c(min(meteo_train$Pressure.Mean), 1006, 1013, 1020, max(meteo_train$Pressure.Mean)), include.lowest = TRUE, labels = c("inf1006", "1006-1013", "1013-1020", "sup1020"))
+# Table with the dependent variable
+table(meteo_train$PressureName.Mean,meteo_train$pluie.demain)
+```
+
+Pour récapituler, les variables que nous venons de créer et que nous allons utiliser dans la suite de l'analyse se nomment : `Month.fac`, `Season.fac`, `WindDirectionMoreux.Mean.900hPa.fac`, `WindSpeedForce.Mean.900hPa` et `PressureName.Mean`. Ces variables étant des facteurs, cela augmente considérablement le nombre potentiel de coefficients à estimer.
+
+## Régressions logistiques
+
+Nous utilisons dans un premier temps la fonction glmulti() pour sélectionner le modèle optimale car nous avons des variables avec plus de deux classes et il se peut que notre modèle soit non linéaire.^[La fonction bestglm() pourrait également être utilisée mais elle semble moins adéquate si le modèle est non linéaire.] Cette fonction a pour objectif de trouver le modèle minimisant un critère d'information. La méthode exhaustive de cette fonction étant trop longue (car trop de variables explicatives), nous utilisons l'algorithme génétique pour trouver le meilleur modèle.
+
+# Choix du modèle : sélection des variables
+
+Nous décidons de minimiser le critère BIC car le terme de pénalité est plus élevé que dans le critère AIC, ceci nous permet d'obtenir des modèles plus parcimonieux. Nous proposons à la fonction 5 ensemble de variables différents pour mener l'analyse, pour chacun des modèles, nous récupérons uniquement les 3 meilleurs modèles :
+
+  - Modèle A : nos 14 variables explicatives identifiées à la suite de l'analyse des corrélogrammes, sans interaction.
+  - Modèle B : nos 14 variables explicatives identifiées à la suite de l'analyse des corrélogrammes, avec interaction.
+  - Modèle C : les variables apparaissant au moins une fois dans l'un des trois meilleurs modèles du modèle A et B, avec interaction. Ceci a pour objectif de s'assurer d'une meilleure convergence de l'algorithme génétique car moins de variAbles sont introduites.^[Puisque l'algorithme génétique est employée, il se peut que parfois les variables `TotalPrecipitation.Sum` et/ou `TotalCloudCover.Mean` n'apparaissent pas dans un des trois meilleurs modèles issus des modèles A et B, on peut également retrouver les variables `HighCloudCover.Max` et`Snowfall.Sum` mais puisque `HighCloudCover.Max` est très corrélée à `MediumCloudCover.Max` nous décidons de ne pas la mettre dans la constructions des modèles C, `Snowfall.Sum` n'étant pas significativement différente de 0, nous l'excluons également.]
+  - Modèle D : les variables individuelles apparaissant au moins une fois dans l'un des trois meilleurs modèles du modèle A et B et qui ressortent également dans les modèles C, toutefois nous introduisons le facteur mois (`Month.fac`) et nous substitions les variables `WindDirection.Mean.900hPa` et `Pressure.Min` par leur facteur respectif `WindDirectionMoreux.Mean.900hPa` et `PressureName.Mean`, avec interaction.
+  - Modèle E : les variables individuelles apparaissant au moins une fois dans l'un des trois meilleurs modèles du modèle A et B et qui ressortent également dans les modèles C, toutefois nous introduisons le facteur saison (`Season.fac`) et nous substitutions la variable `WindSpeed.Mean.900hPa` par son facteur `WindSpeedForce.Mean.900hPa`, avec interaction. Les variables factorielles `Month.fac`, `WindDirectionMoreux.Mean.900hPa` et `PressureName.Mean` ne ressortant pas dans les modèles D, nous les enlevons et remettons `WindDirection.Mean.900hPa` et `Pressure.Min`.
+  
+Afin de résumer les résultats obtenus (nous avons 15 modèles concurrents), nous décidons de nous concentrer sur 4 critères :
+
+  - La courbe ROC (receiver operating characteristic) qui est un graphique représentant les performances d'un modèle de classification pour tous les seuils de classification. Cette courbe trace le taux de vrais positifs en fonction du taux de faux positifs. Nous nous intéressons plus particulièrement à l'air sous cette courbe (Area Under the Curve), l'objectif étant de maximiser cette quantité.
+  - Le taux de bonnes prédictions, l'objectif étant également de le maximiser
+  - L'erreur absolue moyenne (MAE), que l'on souhaite minimiser.
+  - La racine carré de l'erreur quadratique moyenne (RMSE) que l'on minimise également. 
+  
+Quatre tableaux récapitulatifs résument donc les résultats. Il faut remarquer ici que les coefficients estimés pour le meilleur modèle provenant des Modèles A, B, C et E sont bien significativement différent de 0. De plus, les variables à facteur que nous avons créées n'apportent rien à notre analyse, soit elles ne ressortent pas dans les meilleurs modèles ou si elles ressortent, les coefficients associés à ces variables sont rarement significativement différents de 0. Enfin, les modèles estimés lorsque les interactions sont prises en compte varient à chaque fois que le code est exécuté, ceci vient du fait que l'on utilise l'algorithme génétique.
+
+Les coefficients estimés ne peuvent pas être interpréter directement comme dans le cas des modèles de régression linéaire simple. Dans une régression logistique seul le signe du coefficient estimé s'interprète directement, le signe moins signifie que la probabilité d'observer l'évènement que l'on cherche à prédire (s'il pleut demain à Bâle dans notre étude) diminue lorsque la variable associé croît, tandis que le signe plus nous indique que cette probabilité augmente lorsque la valeur de la variable explicative croît.
+
+```{r, warning=FALSE, message=FALSE} 
+library(glmulti)
+# Model A
+glmulti.logit.out.A <-
+  glmulti(pluie.demain ~ WindSpeed.Mean.900hPa + WindGust.Max + WindDirection.Mean.900hPa + TotalCloudCover.Mean + HighCloudCover.Max + MediumCloudCover.Max + LowCloudCover.Max + TotalPrecipitation.Sum + Snowfall.Sum + RelHumidity.Min + Pressure.Min + SunshineDuration.Sum + ShortwaveRadiation.Sum + WindDirection.Mean.10m, data = meteo_train,
+          level = 1,               # 1: No interaction considered; 2: pairwise interaction between covariates
+          method = "g",            # h: Exhaustive approach; 2: genetic algorithm
+          crit = "bic",            # BIC as criteria
+          confsetsize = 3,         # Keep 3 best models
+          plotty = F, report = F,  # No plot or interim reports
+          fitfunction = "glm",     # glm function
+          family = binomial)       # binomial family for logistic regression
+
+# Show the 3 best models (Use @ instead of $ for an S4 object)
+glmulti.logit.out.A@formulas
+# Show results for the best model from Model A
+summary(glmulti.logit.out.A@objects[[1]])
+summary(glmulti.logit.out.A@objects[[2]])
+summary(glmulti.logit.out.A@objects[[3]])
+
+# Model B
+glmulti.logit.out.B <- 
+  glmulti(pluie.demain ~ WindSpeed.Mean.900hPa + WindGust.Max + WindDirection.Mean.900hPa + TotalCloudCover.Mean + HighCloudCover.Max + MediumCloudCover.Max + LowCloudCover.Max + TotalPrecipitation.Sum + Snowfall.Sum + RelHumidity.Min + Pressure.Min + SunshineDuration.Sum + ShortwaveRadiation.Sum + WindDirection.Mean.10m, data = meteo_train,
+          level = 2,               # 1: No interaction considered; 2: pairwise interaction between covariates
+          method = "g",            # h: Exhaustive approach; 2: genetic algorithm
+          crit = "bic",            # AIC as criteria
+          confsetsize = 3,         # Keep 3 best models
+          plotty = F, report = F,  # No plot or interim reports
+          fitfunction = "glm",     # glm function
+          family = binomial)       # binomial family for logistic regression
+
+# Show the 3 best models (Use @ instead of $ for an S4 object)
+glmulti.logit.out.B@formulas
+# Show results for the best model from Model B
+summary(glmulti.logit.out.B@objects[[1]])
+summary(glmulti.logit.out.B@objects[[2]])
+summary(glmulti.logit.out.B@objects[[3]])
+
+# Model C
+glmulti.logit.out.C <-
+  glmulti(pluie.demain ~ WindSpeed.Mean.900hPa + WindGust.Max + WindDirection.Mean.900hPa + TotalCloudCover.Mean + MediumCloudCover.Max + Pressure.Min + SunshineDuration.Sum + ShortwaveRadiation.Sum + WindDirection.Mean.10m, data = meteo_train,
+          level = 2,               # 1: No interaction considered; 2: pairwise interaction between covariates
+          method = "g",            # h: Exhaustive approach; 2: genetic algorithm
+          crit = "bic",            # AIC as criteria
+          confsetsize = 3,         # Keep 3 best models
+          plotty = F, report = F,  # No plot or interim reports
+          fitfunction = "glm",     # glm function
+          family = binomial)       # binomial family for logistic regression
+
+# Show the 3 best models (Use @ instead of $ for an S4 object)
+glmulti.logit.out.C@formulas
+# Show results for the best model from Model C
+summary(glmulti.logit.out.C@objects[[1]])
+summary(glmulti.logit.out.C@objects[[2]])
+summary(glmulti.logit.out.C@objects[[3]])
+
+# Model D
+glmulti.logit.out.D <-
+  glmulti(pluie.demain ~ Month.fac + WindSpeed.Mean.900hPa + WindGust.Max + WindDirectionMoreux.Mean.900hPa.fac + TotalCloudCover.Mean + MediumCloudCover.Max + PressureName.Mean + SunshineDuration.Sum + ShortwaveRadiation.Sum + WindDirection.Mean.10m, data = meteo_train,
+          level = 2,               # 1: No interaction considered; 2: pairwise interaction between covariates
+          method = "g",            # h: Exhaustive approach; 2: genetic algorithm
+          crit = "bic",            # AIC as criteria
+          confsetsize = 3,         # Keep 3 best models
+          plotty = F, report = F,  # No plot or interim reports
+          fitfunction = "glm",     # glm function
+          family = binomial)       # binomial family for logistic regression
+
+# Show the 3 best models (Use @ instead of $ for an S4 object)
+glmulti.logit.out.D@formulas
+# Show results for the best model
+summary(glmulti.logit.out.D@objects[[1]])
+summary(glmulti.logit.out.D@objects[[2]])
+summary(glmulti.logit.out.D@objects[[3]])
+
+# Model E
+glmulti.logit.out.E <-
+  glmulti(pluie.demain ~ Season.fac + WindSpeedForce.Mean.900hPa + WindGust.Max + WindDirection.Mean.900hPa + TotalCloudCover.Mean + MediumCloudCover.Max + Pressure.Min + SunshineDuration.Sum + ShortwaveRadiation.Sum + WindDirection.Mean.10m, data = meteo_train,
+          level = 2,               # 1: No interaction considered; 2: pairwise interaction between covariates
+          method = "g",            # h: Exhaustive approach; 2: genetic algorithm
+          crit = "bic",            # AIC as criteria
+          confsetsize = 3,         # Keep 3 best models
+          plotty = F, report = F,  # No plot or interim reports
+          fitfunction = "glm",     # glm function
+          family = binomial)       # binomial family for logistic regression
+
+# Show the 3 best models (Use @ instead of $ for an S4 object)
+glmulti.logit.out.E@formulas
+# Show results for the best model
+summary(glmulti.logit.out.E@objects[[1]])
+summary(glmulti.logit.out.E@objects[[2]])
+summary(glmulti.logit.out.E@objects[[3]])
+```
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+library(pROC)
+# Matrices initialization
+criterion_AUC = matrix(NA, nrow = 3, ncol = 5)
+criterion_GoodPred = matrix(NA, nrow = 3, ncol = 5)
+criterion_MAE = matrix(NA, nrow = 3, ncol = 5)
+criterion_RMSE = matrix(NA, nrow = 3, ncol = 5)
+for(i in 1:3){
+  criterion_AUC[i,1] <- auc(meteo_train$pluie.demain, glmulti.logit.out.A@objects[[i]]$fitted.values)
+  criterion_AUC[i,2] <- auc(meteo_train$pluie.demain, glmulti.logit.out.B@objects[[i]]$fitted.values)
+  criterion_AUC[i,3] <- auc(meteo_train$pluie.demain, glmulti.logit.out.C@objects[[i]]$fitted.values)
+  criterion_AUC[i,4] <- auc(meteo_train$pluie.demain, glmulti.logit.out.D@objects[[i]]$fitted.values)
+  criterion_AUC[i,5] <- auc(meteo_train$pluie.demain, glmulti.logit.out.E@objects[[i]]$fitted.values)
+
+  criterion_GoodPred[i,1] <- mean((glmulti.logit.out.A@objects[[i]]$fitted.values >= 0.5) == (meteo_train$pluie.demain == "TRUE"))
+  criterion_GoodPred[i,2] <- mean((glmulti.logit.out.B@objects[[i]]$fitted.values >= 0.5) == (meteo_train$pluie.demain == "TRUE"))
+  criterion_GoodPred[i,3] <- mean((glmulti.logit.out.C@objects[[i]]$fitted.values >= 0.5) == (meteo_train$pluie.demain == "TRUE"))
+  criterion_GoodPred[i,4] <- mean((glmulti.logit.out.D@objects[[i]]$fitted.values >= 0.5) == (meteo_train$pluie.demain == "TRUE"))
+  criterion_GoodPred[i,5] <- mean((glmulti.logit.out.E@objects[[i]]$fitted.values >= 0.5) == (meteo_train$pluie.demain == "TRUE"))
+
+  criterion_MAE[i,1] <- mean(abs((glmulti.logit.out.A@objects[[i]]$fitted.values >= 0.5) - (meteo_train$pluie.demain == "TRUE")))
+  criterion_MAE[i,2] <- mean(abs((glmulti.logit.out.B@objects[[i]]$fitted.values >= 0.5) - (meteo_train$pluie.demain == "TRUE")))
+  criterion_MAE[i,3] <- mean(abs((glmulti.logit.out.C@objects[[i]]$fitted.values >= 0.5) - (meteo_train$pluie.demain == "TRUE")))
+  criterion_MAE[i,4] <- mean(abs((glmulti.logit.out.D@objects[[i]]$fitted.values >= 0.5) - (meteo_train$pluie.demain == "TRUE")))
+  criterion_MAE[i,5] <- mean(abs((glmulti.logit.out.E@objects[[i]]$fitted.values >= 0.5) - (meteo_train$pluie.demain == "TRUE")))
+
+  criterion_RMSE[i,1] <- sqrt(mean(((glmulti.logit.out.A@objects[[i]]$fitted.values >= 0.5) - (meteo_train$pluie.demain == "TRUE"))^2))
+  criterion_RMSE[i,2] <- sqrt(mean(((glmulti.logit.out.B@objects[[i]]$fitted.values >= 0.5) - (meteo_train$pluie.demain == "TRUE"))^2))
+  criterion_RMSE[i,3] <- sqrt(mean(((glmulti.logit.out.C@objects[[i]]$fitted.values >= 0.5) - (meteo_train$pluie.demain == "TRUE"))^2))
+  criterion_RMSE[i,4] <- sqrt(mean(((glmulti.logit.out.D@objects[[i]]$fitted.values >= 0.5) - (meteo_train$pluie.demain == "TRUE"))^2))
+  criterion_RMSE[i,5] <- sqrt(mean(((glmulti.logit.out.E@objects[[i]]$fitted.values >= 0.5) - (meteo_train$pluie.demain == "TRUE"))^2))
+}
+
+colnames(criterion_AUC) <- c("Modèle A", "Modèle B", "Modèle C", "Modèle D", "Modèle E")
+rownames(criterion_AUC) <- c("Meilleur modèle 1 : ", "Meilleur modèle 2 : ", "Meilleur modèle 3 : ")
+colnames(criterion_GoodPred) <- c("Modèle A", "Modèle B", "Modèle C", "Modèle D", "Modèle E")
+rownames(criterion_GoodPred) <- c("Meilleur modèle 1 : ", "Meilleur modèle 2 : ", "Meilleur modèle 3 : ")
+colnames(criterion_MAE) <- c("Modèle A", "Modèle B", "Modèle C", "Modèle D", "Modèle E")
+rownames(criterion_MAE) <- c("Meilleur modèle 1 : ", "Meilleur modèle 2 : ", "Meilleur modèle 3 : ")
+colnames(criterion_RMSE) <- c("Modèle A", "Modèle B", "Modèle C", "Modèle D", "Modèle E")
+rownames(criterion_RMSE) <- c("Meilleur modèle 1 : ", "Meilleur modèle 2 : ", "Meilleur modèle 3 : ")
+
+print("Table avec l'air sous la courbe :")
+print(criterion_AUC)
+print("Table avec le taux de bonnes prédictions :")
+print(criterion_GoodPred)
+print("Table avec l'erreur absolue moyenne :")
+print(criterion_MAE)
+print("Table avec la racine carré de l'erreur quadratique moyenne :")
+print(criterion_RMSE)
+```
+
+A la lecture des tableaux précédents, nous souhaitons poursuivre l'étude en utilisant les modèles obtenus en B et C puisque ces modèles minimisent la MAE et la RMSE tout en affichant une bonne AUC et taux de prévision. Les modèles D et E dans lesquelles les variables à facteur sont introduites sont écartés en raison de la non significativité des coefficients associés aux variables explicatives à facteur même si les modèles D obtiennent parfois de bons résultats. 
+
+# Validation croisée
+
+Nous repartons des modèles obtenus en B et C (nous ne sélectionnons plus les variables) et nous souhaitons les départager en se basant sur leur capacité prédictive. Pour cela, nous redécoupons l'échantillon d'apprentissage (`meteo_train`) en un échantillon in-sample (`train_in`) et un échantillon out-of-sample (`train_out`). Sur l'échantillon in-sample, nous estimons les modèles tandis que sur l'échantillon out-of-sample nous calculons le taux de bonnes prévisions (qui est l'objectif de l'étude). Nous appliquons plus particulièrement une technique de validation croisée dite de Monte Carlo puisque nous répétons ces opérations 50. Ensuite, il suffit de faire la moyenne des taux de bonnes prédictions sur les 50 simulations.
+
+```{r, warning=FALSE, message=FALSE}
+# Monte Carlo Cross-Validation
+
+# Number of Monte Carlo experiments
+K = 50
+# Array initialization
+criterion_GoodPred_train_out_array = array(NA, dim = c(3,2,K))
+# Loop
+for(i in 1:K){
+  # Boolean vector to randomly draw, when TRUE the observation goes to train_in and we have 70% of our observations inside
+  train_in = sample(c(T, F), nrow(meteo_train), replace = T, prob = c(.7, .3))
+
+  # Coefficient estimates for our model C and D by using the train_in sample
+  model.B.1_train_in = glm(
+    glmulti.logit.out.B@formulas[[1]],
+    family = binomial,
+    data = meteo_train[train_in, ]
+  )
+  model.B.2_train_in = glm(
+    glmulti.logit.out.B@formulas[[2]],
+    family = binomial,
+    data = meteo_train[train_in, ]
+  )
+  model.B.3_train_in = glm(
+    glmulti.logit.out.B@formulas[[3]],
+    family = binomial,
+    data = meteo_train[train_in, ]
+  )
+
+  model.C.1_train_in = glm(
+    glmulti.logit.out.C@formulas[[1]],
+    family = binomial,
+    data = meteo_train[train_in, ]
+  )
+  model.C.2_train_in = glm(
+    glmulti.logit.out.C@formulas[[2]],
+    family = binomial,
+    data = meteo_train[train_in, ]
+  )
+  model.C.3_train_in = glm(
+    glmulti.logit.out.C@formulas[[3]],
+    family = binomial,
+    data = meteo_train[train_in, ]
+  )
+
+  # Prediction for each model on the train_out sample
+  model.B.1_train_out_prob = predict(model.B.1_train_in, meteo_train[!train_in, ], type = "response")
+  model.B.2_train_out_prob = predict(model.B.2_train_in, meteo_train[!train_in, ], type = "response")
+  model.B.3_train_out_prob = predict(model.B.3_train_in, meteo_train[!train_in, ], type = "response")
+  model.C.1_train_out_prob = predict(model.C.1_train_in, meteo_train[!train_in, ], type = "response")
+  model.C.2_train_out_prob = predict(model.C.2_train_in, meteo_train[!train_in, ], type = "response")
+  model.C.3_train_out_prob = predict(model.C.3_train_in, meteo_train[!train_in, ], type = "response")
+
+  # Rate of Good Prediction
+  criterion_GoodPred_train_out_array[1,1,i] <- mean((model.B.1_train_out_prob >= 0.5) == (meteo_train$pluie.demain[!train_in]== "TRUE"))
+  criterion_GoodPred_train_out_array[2,1,i] <- mean((model.B.2_train_out_prob >= 0.5) == (meteo_train$pluie.demain[!train_in]== "TRUE"))
+  criterion_GoodPred_train_out_array[3,1,i] <- mean((model.B.3_train_out_prob >= 0.5) == (meteo_train$pluie.demain[!train_in]== "TRUE"))
+  criterion_GoodPred_train_out_array[1,2,i] <- mean((model.C.1_train_out_prob >= 0.5) == (meteo_train$pluie.demain[!train_in]== "TRUE"))
+  criterion_GoodPred_train_out_array[2,2,i] <- mean((model.C.2_train_out_prob >= 0.5) == (meteo_train$pluie.demain[!train_in]== "TRUE"))
+  criterion_GoodPred_train_out_array[3,2,i] <- mean((model.C.3_train_out_prob >= 0.5) == (meteo_train$pluie.demain[!train_in]== "TRUE"))
+}
+# End loop
+
+# Average across Monte Carlo experiments
+criterion_GoodPred_train_out = apply(criterion_GoodPred_train_out_array, c(1,2), mean)
+
+colnames(criterion_GoodPred_train_out) <- c("Modèle B", "Modèle C")
+rownames(criterion_GoodPred_train_out) <- c("Meilleur modèle 1 : ", "Meilleur modèle 2 : ", "Meilleur modèle 3 : ")
+```
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+print("Table avec le taux de bonnes prédictions :")
+print(criterion_GoodPred_train_out)
+```
+
+Le taux de bonnes prévisions est le plus élevé pour les modèles venant de B.
+
+# Modèle finale : test statistique et choix du seuil
+
+Notre modèle final est donc le meilleur modèle de B. Nous souhaitons vérifier si notre modèle est valide et s'il faudrait ajuster le seuil avant d'efefctuer nos prévisions sur l'échantillon test.
+
+```{r, warning=FALSE, message=FALSE} 
+# Final Model 
+mylogit_train_final = glm(glmulti.logit.out.B@formulas[[1]],
+               data = meteo_train,
+               family = binomial)
+summary(mylogit_train_final)
+meteo_train$mylogit_train_final_prob = mylogit_train_final$fitted.values
+```
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+print("Deviance test: H0 Model with no covariates; H1: My model")
+pchisq(mylogit_train_final$null.deviance - mylogit_train_final$deviance, mylogit_train_final$df.null - mylogit_train_final$df.residual, lower = F)
+print("Low Pvalue, we reject the model with no covariate")
+print("Deviance test: H0 My model; H1: Saturated Model")
+pchisq(mylogit_train_final$deviance, mylogit_train_final$df.residual, lower = F)
+print("Low Pvalue, we reject the null, my model does not seem adequate but I don't want to use the model with all covariates")
+```
+```{r, warning=FALSE, message=FALSE} 
+# ROC Curve plot
+output_roc <- roc(meteo_train$pluie.demain, meteo_train$mylogit_train_final_prob, plot=TRUE, legacy.axes=TRUE, percent=TRUE, xlab="False Positive Rate", ylab="True Positive Rate", col="#377eb8", lwd=4, print.auc=TRUE) 
+
+
+cutoff = seq(0, 1, by=.001)
+result = matrix(NA, nrow = length(cutoff), ncol = 3)
+for(i in 1:length(cutoff)){
+  pred = (meteo_train$mylogit_train_final_prob  >= cutoff[i])
+  result[i,1] = mean(pred == (meteo_train$pluie.demain == "TRUE")) # Good Prediction
+  result[i,2] = mean(abs(pred - (meteo_train$pluie.demain == "TRUE"))) # MAE
+  result[i,3] = sqrt(mean(pred - (meteo_train$pluie.demain == "TRUE"))^2) # RMSE
+}
+cutoff_opt = c(cutoff[which.max(result[,1])], cutoff[which.min(result[,2])], cutoff[which.min(result[,3])])
+```
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+print("Seuil optimal en fonction du critère retenue (Taux de bonnes prédictions, MAE et RMSE)")
+cutoff_opt
+print("Nous sélectionnons automatiquement le seuil optimal qui permet de maximiser le taux de bonnes prévisions.")
+```
+
+## Prévisions sur les données hors échantillon
+
+Nous utilisons le modèle estimé dans mylogit_train_final, provenant du meilleur modèle B, pour faire nos prévisions sur la base de test. __A chaque exécution du code, le modèle optimal sera différent en raison de l'utilisation de l'algorithme génétique. C'est donc un choix délibéré de ne pas imposer ici une équation de modèle unique. En effet, les différences en terme de capacité prédictive observées sur l'échantillon d'apprentissage sont très proches d'une exécution (d'un modèle) à un autre.__
+
+```{r, warning=FALSE, message=FALSE}
+
+# Forecast by using the test dataset
+meteo_test = read.csv("meteo.test.csv")
+#dput(names(meteo_test))
+# Vérifier que j'ai bien renommé toutes les variables
+names(meteo_test) <- c("X", "Year", "Month", "Day", "Hour", "Minute", "Temperature.Mean", 
+                        "RelHumidity.Mean", "Pressure.Mean", 
+                        "TotalPrecipitation.Sum", "Snowfall.Sum", 
+                        "TotalCloudCover.Mean", "HighCloudCover.Mean", 
+                        "MediumCloudCover.Mean", "LowCloudCover.Mean", 
+                        "SunshineDuration.Sum", "ShortwaveRadiation.Sum", 
+                        "WindSpeed.Mean.10m", "WindDirection.Mean.10m", 
+                        "WindSpeed.Mean.80m", "WindDirection.Mean.80m", 
+                        "WindSpeed.Mean.900hPa", "WindDirection.Mean.900hPa", 
+                        "WindGust.Mean", "Temperature.Max", 
+                        "Temperature.Min", "RelHumidity.Max", 
+                        "RelHumidity.Min", "Pressure.Max", 
+                        "Pressure.Min", "TotalCloudCover.Max", 
+                        "TotalCloudCover.Min", "HighCloudCover.Max", 
+                        "HighCloudCover.Min", "MediumCloudCover.Max", 
+                        "MediumCloudCover.Min", "LowCloudCover.Max", 
+                        "LowCloudCover.Min", "WindSpeed.Max.10m", 
+                        "WindSpeed.Min.10m", "WindSpeed.Max.80m", 
+                        "WindSpeed.Min.80m", "WindSpeed.Max.900hPa", 
+                        "WindSpeed.Min.900hPa", "WindGust.Max", 
+                        "WindGust.Min"
+)
+
+# There is no need to add or transform some covariates
+
+# output in meteo_test
+meteo_test$mylogit_test_final_prob = predict(mylogit_train_final, meteo_test, type="response")
+meteo_test$mylogit_test_final_pred = (meteo_test$mylogit_test_final_prob >= cutoff_opt[1])
+
+# output in .csv
+write.csv(meteo_test,"meteo_test_final.csv")
+```
+
+Le fichier .csv contenant les prévisions est disponible dans le dossier dont vous avez renseigné le chemin en début du document.
+
+Fin.
