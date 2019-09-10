@@ -19,7 +19,7 @@ knitr::opts_chunk$set(echo = TRUE, eval=TRUE)
 
 # Présentation des données : Prédire les jours de pluie à Bâle
 
-Comme renseigné dans l'énoncé, le fichier `meteo.train.csv` contient des données sur les conditions météorologiques à Bâle (Suisse). Chaque ligne correspond à un jour entre 2010 et 2018. Bien que ces observatons soient reportées dans l'ordre chronologique, ces jours ne sont pas systématiquement consécutifs, certains d'entre eux sont dans la base test correspondant au fichier `meteo.test.csv`. Nous décidons donc de ne pas utiliser un modèle utilisant des variables retardées. En d'autres termes, seules les observations du jour même sont utilisées pour prévoir s'il va pleuvoir demain (variable `pluie.demain`). Bien que dommageable car il nous est dès lors impossible de prendre en compte dans le temps l'évolution des épisodes météorologiques, cette hypothèse de travail nous semble moins contraignante pour réaliser des prévisions immédiates (ayant une échéance de quelques heures). Les colonnes (variables) correspondent aux valeurs moyennes, minimales et maximales sur la journée de :
+Comme renseigné dans l'énoncé, le fichier `meteo.train.csv` contient des données sur les conditions météorologiques à Bâle (Suisse). Chaque ligne correspond à un jour entre 2010 et 2018. Bien que ces observations soient reportées dans l'ordre chronologique, ces jours ne sont pas systématiquement consécutifs, certains d'entre eux sont dans la base test correspondant au fichier `meteo.test.csv`. Nous décidons donc de ne pas utiliser un modèle utilisant des variables retardées. En d'autres termes, seules les observations du jour même sont utilisées pour prévoir s'il va pleuvoir demain (variable `pluie.demain`). Bien que dommageable car il nous est dès lors impossible de prendre en compte dans le temps l'évolution des épisodes météorologiques, cette hypothèse de travail nous semble moins contraignante pour réaliser des prévisions immédiates (ayant une échéance de quelques heures). Les colonnes (variables) correspondent aux valeurs moyennes, minimales et maximales sur la journée de :
 
   - Température (en °C): `Temperature.Mean`, `Temperature.Max`, `Temperature.Min`;
   - Humidité relative (en pourcentage): `RelHumidity.Mean`, `RelHumidity.Max`, `RelHumidity.Min`;
@@ -29,7 +29,7 @@ Comme renseigné dans l'énoncé, le fichier `meteo.train.csv` contient des donn
   - Vitesse (en km/h) du vent à 10 m d'altitude, 80 m d'altitude, et à l'altitude où la pression vaut 900 hPa: `WindSpeed.Mean.10m`, `WindSpeed.Mean.80m`, `WindSpeed.Mean.900hPa`, `WindSpeed.Max.10m`, `WindSpeed.Max.80m`, `WindSpeed.Max.900hPa`, `WindSpeed.Min.10m`, `WindSpeed.Min.80m`, `WindSpeed.Min.900hPa`;
   - Direction (en degrés) du vent à 10 m d'altitude, 80 m d'altitude, et à l'altitude où la pression vaut 900 hPa: `WindDirection.Mean.10m`, `WindDirection.Mean.80m`, `WindDirection.Mean.900hPa`;
   - Rafales de vent à 10 m: `WindGust.Mean`, `WindGust.Max`, `WindGust.Min`;
-  
+
 ainsi qu'aux valeurs totales sur la journée de :
 
   - Précipitations (en mm): `TotalPrecipitation.Sum`;
@@ -44,7 +44,7 @@ Pour plus de clarté les noms des 40 variables explicatives ont été recodées.
 rm(list = ls(all = TRUE))
 
 # Set the folder path to download and upload your dataset
-setwd("F:/Dropbox/Dauphine-SDFi/DauphineDigital/DM_mlg")
+setwd("F:/Dropbox/Dauphine-SDFi/DauphineDigital/ExecutiveMasterStatistiqueEtBigData/Module 2/ModèleLinéaireGénéralisé_Ryder/DM_mlg")
 
 # Import your dataset
 meteo_train = read.csv("meteo.train.csv")
@@ -84,7 +84,7 @@ Cette section propose une analyse descriptive des 40 variables explicatives. Cet
 
 ## Analyse des corrélations: variables redondantes
 
-Le jeu de données contenant les valeurs moyennes, maximales et minimales pour un certain nombre devariables, nous décidons d'analyser les corrélations entre ces dernières afin d'éliminer de potentiel variables redondantes.
+Le jeu de données contenant les valeurs moyennes, maximales et minimales pour un certain nombre de variables, nous décidons d'analyser les corrélations entre ces dernières afin d'éliminer de potentiel variables redondantes.
 
 ```{r, warning=FALSE, message=FALSE}
 # Correlations among our 40 numeric explanatory variables 
@@ -151,15 +151,15 @@ corrplot(corr.exp.var.Temperature$r, type="upper", order="hclust",
          p.mat = corr.exp.var.Temperature$P, sig.level = 0.01, insig = "blank")
 ```
 
-D'après le premier graphique, nous décidons de conserver les variables `WindSpeed.Mean.900hPa` et `WindGust.Max` car pour une altitude (pression atmosphérique) identique, les variables `.Mean`, `.Max` et `Min` ont de très fortes corrélations (supérieur à 80%). Les variables `.Max` sot ici les plus corrélées avec la variables dépendante, nous décidons donc de sélectionner celle avec la plus forte corrélation avec la variables dépendante (`WindGust.Max`). La variable `WindSpeed.Mean.900hPa` est préférée à la variable `WindSpeed.Max.900hPa` (plus corrélée avec la dépendante) afin de limiter la corrélation avec la pécédente variables sélectionnée.
+D'après le premier graphique, nous décidons de conserver les variables `WindSpeed.Mean.900hPa` et `WindGust.Max` car pour une altitude (pression atmosphérique) identique, les variables `.Mean`, `.Max` et `Min` ont de très fortes corrélations (supérieur à 80%). Les variables `.Max` sot ici les plus corrélées avec la variables dépendante, nous décidons donc de sélectionner celle avec la plus forte corrélation avec la variables dépendante (`WindGust.Max`). La variable `WindSpeed.Mean.900hPa` est préférée à la variable `WindSpeed.Max.900hPa` (plus corrélée avec la dépendante) afin de limiter la corrélation avec la précédente variables sélectionnée.
 
 D'après le deuxième graphique, c'est la variable `WindDirection.Mean.900hPa` qui est retenue car la plus corrélée avec la variable `pluie.demain`. La direction du vent à 10 mètres (`WindDirection.Mean.10m`) pourrait également être conservée car peu corrélée avec notre variables sélectionnée.
 
-D'après le troisième graphique, ce sont les variables `TotalCloudCover.Mean`, `HighCloudCover.Max`, `MediumCloudCover.Max` et `LowCloudCover.Max`. Les variables `.Min` n'étant pas corrélée avec la variable dépendante, nous n'en conservons pas. En effet, en l'absence de nuage, il est peu probable qu'il pleuve. Les variables `.Max`sont privilégiées pour les trois niveaux de couverture nuageuses afin de capter la présence d'un ciel de traîne. Ne sachant pas exactement à quelle altitude se juge la couverture nuageuse basse, moyenne et haute, nous avons décidé de prendre une variable de chacune de ses catégories. La couvertuire nuageuse totale, permet d'avoir une observation moyenne sur la journée. On s'attend à ce que plus la couverture nuageuse soit élevée, plus la probabilité de pluie le lendemain est importante.
+D'après le troisième graphique, ce sont les variables `TotalCloudCover.Mean`, `HighCloudCover.Max`, `MediumCloudCover.Max` et `LowCloudCover.Max`. Les variables `.Min` n'étant pas corrélée avec la variable dépendante, nous n'en conservons pas. En effet, en l'absence de nuage, il est peu probable qu'il pleuve. Les variables `.Max`sont privilégiées pour les trois niveaux de couverture nuageuses afin de capter la présence d'un ciel de traîne. Ne sachant pas exactement à quelle altitude se juge la couverture nuageuse basse, moyenne et haute, nous avons décidé de prendre une variable de chacune de ses catégories. La couverture nuageuse totale, permet d'avoir une observation moyenne sur la journée. On s'attend à ce que plus la couverture nuageuse soit élevée, plus la probabilité de pluie le lendemain est importante.
 
 D'après le quatrième graphique, la variable dépendante `pluie.demain` est corrélée positivement et significativement avec les trois variables suivantes : `TotalPrecipitation.Sum`, `Snowfall.Sum` et `RelHumidity.Min`; nous décidons donc des sélectionner.
 
-D'après le cinquième graphique, la pression atmosphérique est corrélée négativement et significativement avec la varibale dépendante. Les phénomènes pluvieux se produisent lorsque la pression atmosphérique est basse. Afin de capter si une basse pression a été observée durqnt la journée, nous sélectionnons la variable `Pressure.Min`, ce choix est également guidé par le fait que sa corrélation avec la variable dépendante est la plus forte parmi les trois (-38,41% contre -37,82% avec `Pressure.Mean` et -36.29% avec `Pressure.Max`).
+D'après le cinquième graphique, la pression atmosphérique est corrélée négativement et significativement avec la variable dépendante. Les phénomènes pluvieux se produisent lorsque la pression atmosphérique est basse. Afin de capter si une basse pression a été observée durant la journée, nous sélectionnons la variable `Pressure.Min`, ce choix est également guidé par le fait que sa corrélation avec la variable dépendante est la plus forte parmi les trois (-38,41% contre -37,82% avec `Pressure.Mean` et -36.29% avec `Pressure.Max`).
 
 D'après le sixième graphique, les variables températures ne sont pas corrélée significativement avec la variable dépendante tandis que les trois autres le sont. Nous décidons donc de sélectionner `SunshineDuration.Sum` et `ShortwaveRadiation.Sum` même si ces deux variables sont corrélées positivement et significativement (73%). A cette étape de l'analyse, il nous semble potentiellement dommageable de négliger une variable explicative comme la température. La variable `Temperature.Min` étant la plus corrélée avec la variable `pluie.demain` (5,80% contre 4,21% avec `Température.Mean` et 4,94% avec `Temperature.Max`), c'est cette dernière que nous conservons.
 
@@ -241,14 +241,14 @@ Nous décidons de minimiser le critère BIC car le terme de pénalité est plus 
   - Modèle C : les variables apparaissant au moins une fois dans l'un des trois meilleurs modèles du modèle A et B, avec interaction. Ceci a pour objectif de s'assurer d'une meilleure convergence de l'algorithme génétique car moins de variAbles sont introduites.^[Puisque l'algorithme génétique est employée, il se peut que parfois les variables `TotalPrecipitation.Sum` et/ou `TotalCloudCover.Mean` n'apparaissent pas dans un des trois meilleurs modèles issus des modèles A et B, on peut également retrouver les variables `HighCloudCover.Max` et`Snowfall.Sum` mais puisque `HighCloudCover.Max` est très corrélée à `MediumCloudCover.Max` nous décidons de ne pas la mettre dans la constructions des modèles C, `Snowfall.Sum` n'étant pas significativement différente de 0, nous l'excluons également.]
   - Modèle D : les variables individuelles apparaissant au moins une fois dans l'un des trois meilleurs modèles du modèle A et B et qui ressortent également dans les modèles C, toutefois nous introduisons le facteur mois (`Month.fac`) et nous substitions les variables `WindDirection.Mean.900hPa` et `Pressure.Min` par leur facteur respectif `WindDirectionMoreux.Mean.900hPa` et `PressureName.Mean`, avec interaction.
   - Modèle E : les variables individuelles apparaissant au moins une fois dans l'un des trois meilleurs modèles du modèle A et B et qui ressortent également dans les modèles C, toutefois nous introduisons le facteur saison (`Season.fac`) et nous substitutions la variable `WindSpeed.Mean.900hPa` par son facteur `WindSpeedForce.Mean.900hPa`, avec interaction. Les variables factorielles `Month.fac`, `WindDirectionMoreux.Mean.900hPa` et `PressureName.Mean` ne ressortant pas dans les modèles D, nous les enlevons et remettons `WindDirection.Mean.900hPa` et `Pressure.Min`.
-  
+
 Afin de résumer les résultats obtenus (nous avons 15 modèles concurrents), nous décidons de nous concentrer sur 4 critères :
 
   - La courbe ROC (receiver operating characteristic) qui est un graphique représentant les performances d'un modèle de classification pour tous les seuils de classification. Cette courbe trace le taux de vrais positifs en fonction du taux de faux positifs. Nous nous intéressons plus particulièrement à l'air sous cette courbe (Area Under the Curve), l'objectif étant de maximiser cette quantité.
   - Le taux de bonnes prédictions, l'objectif étant également de le maximiser
   - L'erreur absolue moyenne (MAE), que l'on souhaite minimiser.
   - La racine carré de l'erreur quadratique moyenne (RMSE) que l'on minimise également. 
-  
+
 Quatre tableaux récapitulatifs résument donc les résultats. Il faut remarquer ici que les coefficients estimés pour le meilleur modèle provenant des Modèles A, B, C et E sont bien significativement différent de 0. De plus, les variables à facteur que nous avons créées n'apportent rien à notre analyse, soit elles ne ressortent pas dans les meilleurs modèles ou si elles ressortent, les coefficients associés à ces variables sont rarement significativement différents de 0. Enfin, les modèles estimés lorsque les interactions sont prises en compte varient à chaque fois que le code est exécuté, ceci vient du fait que l'on utilise l'algorithme génétique.
 
 Les coefficients estimés ne peuvent pas être interpréter directement comme dans le cas des modèles de régression linéaire simple. Dans une régression logistique seul le signe du coefficient estimé s'interprète directement, le signe moins signifie que la probabilité d'observer l'évènement que l'on cherche à prédire (s'il pleut demain à Bâle dans notre étude) diminue lorsque la variable associé croît, tandis que le signe plus nous indique que cette probabilité augmente lorsque la valeur de la variable explicative croît.
@@ -402,7 +402,7 @@ A la lecture des tableaux précédents, nous souhaitons poursuivre l'étude en u
 
 # Validation croisée
 
-Nous repartons des modèles obtenus en B et C (nous ne sélectionnons plus les variables) et nous souhaitons les départager en se basant sur leur capacité prédictive. Pour cela, nous redécoupons l'échantillon d'apprentissage (`meteo_train`) en un échantillon in-sample (`train_in`) et un échantillon out-of-sample (`train_out`). Sur l'échantillon in-sample, nous estimons les modèles tandis que sur l'échantillon out-of-sample nous calculons le taux de bonnes prévisions (qui est l'objectif de l'étude). Nous appliquons plus particulièrement une technique de validation croisée dite de Monte Carlo puisque nous répétons ces opérations 50. Ensuite, il suffit de faire la moyenne des taux de bonnes prédictions sur les 50 simulations.
+Nous repartons des modèles obtenus en B et C (nous ne sélectionnons plus les variables) et nous souhaitons les départager en se basant sur leur capacité prédictive. Pour cela, nous redécoupons l'échantillon d'apprentissage (`meteo_train`) en un échantillon *in-sample* (`train_in`) et un échantillon *out-of-sample* (`train_out`). Sur l'échantillon *in-sample*, nous estimons les modèles tandis que sur l'échantillon *out-of-sample* nous calculons le taux de bonnes prévisions (qui est l'objectif de l'étude). Nous appliquons plus particulièrement une technique de validation croisée dite de Monte Carlo puisque nous répétons ces opérations 50. Ensuite, il suffit de faire la moyenne des taux de bonnes prédictions sur les 50 simulations.
 
 ```{r, warning=FALSE, message=FALSE}
 # Monte Carlo Cross-Validation
@@ -481,9 +481,9 @@ print(criterion_GoodPred_train_out)
 
 Le taux de bonnes prévisions est le plus élevé pour les modèles venant de B.
 
-# Modèle finale : test statistique et choix du seuil
+# Modèle final : test statistique et choix du seuil
 
-Notre modèle final est donc le meilleur modèle de B. Nous souhaitons vérifier si notre modèle est valide et s'il faudrait ajuster le seuil avant d'efefctuer nos prévisions sur l'échantillon test.
+Notre modèle final est donc le meilleur modèle de B. Nous souhaitons vérifier si notre modèle est valide et s'il faudrait ajuster le seuil avant d'effectuer nos prévisions sur l'échantillon test.
 
 ```{r, warning=FALSE, message=FALSE} 
 # Final Model 
@@ -568,3 +568,4 @@ write.csv(meteo_test,"meteo_test_final.csv")
 Le fichier .csv contenant les prévisions est disponible dans le dossier dont vous avez renseigné le chemin en début du document.
 
 Fin.
+
